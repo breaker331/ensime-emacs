@@ -53,12 +53,11 @@
 
 (eval-when-compile
   (require 'cl)
+  (require 'thingatpt)
+  (require 'company)
+  (require 'ensime-overlay)
+  (require 'comint)
   (require 'ensime-macros))
-
-(require 'thingatpt)
-(require 'company)
-(require 'ensime-overlay)
-(require 'comint)
 
 (defconst ensime-inf-capture-candidates-regex "= Candidates([0-9]+,List(\\(.*\\)))$")
 (defconst ensime-inf-get-completions-code-template "vals.completion.completer.complete(\"%s\", %d)")
@@ -354,7 +353,8 @@ Used for determining the default in the next one.")
             (setq ensime-inf-overlay-marker nil)))))))
 
 (defun ensime-inf-util-strip-string (string)
-  "Strip STRING whitespace and newlines from end and beginning."
+  "Strip STRING whitespace and newlines from end and beginning.
+This is stolen from 'python-mode."
   (replace-regexp-in-string
    (rx (or (: string-start (* (any whitespace ?\r ?\n)))
            (: (* (any whitespace ?\r ?\n)) string-end)))
@@ -362,9 +362,7 @@ Used for determining the default in the next one.")
    string))
 
 (defun collect-process-output-into-buffer (proc output)
-  "I do stuff with PROC and OUTPUT."
-  ;; (when (get-buffer "mybuf")
-  ;;   (kill-buffer "mybuf"))
+  "Collect process PROCs output OUTPUT into a buffer and return that buffer."
   (let* (
          (buffer (get-buffer-create "mybuf")))
     (with-current-buffer buffer
@@ -377,10 +375,8 @@ Used for determining the default in the next one.")
   (interactive)
   (let*
       ((process (get-buffer-process ensime-inf-buffer-name))
-       ;; (str (thing-at-point 'line))
        (column (- (current-column) 7))
        (fullstr (format ensime-inf-get-completions-code-template arg column))
-       ;; (comint-preoutput-filter-functions '(collect-process-output-into-buffer))
        (inhibit-quit t))
     (with-current-buffer (process-buffer process)
       (set-process-filter process 'collect-process-output-into-buffer)
@@ -398,7 +394,6 @@ Used for determining the default in the next one.")
 (defun company-ensime-inf-backend (command &optional arg &rest ignored)
   "Company backend for ensime-inf mode."
   (interactive (list 'interactive))
-
   (cl-case command
     (interactive (company-begin-backend 'company-ensime-inf-backend))
     (prefix (and (eq major-mode 'ensime-inf-mode)
