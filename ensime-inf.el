@@ -55,8 +55,13 @@
   (require 'cl)
   (require 'ensime-macros))
 
+(require 'thingatpt)
+(require 'company)
 (require 'ensime-overlay)
 (require 'comint)
+
+(defconst ensime-inf-capture-candidates-regex "= Candidates([0-9]+,List(\\(.*\\)))$")
+(defconst ensime-inf-get-completions-code-template "vals.completion.completer.complete(\"%s\", %d)")
 
 (defgroup ensime-inf nil
   "Support for running the Scala REPL as an inferior process."
@@ -347,6 +352,62 @@ Used for determining the default in the next one.")
               :where (marker-position ensime-inf-overlay-marker)
               :duration 'command)
             (setq ensime-inf-overlay-marker nil)))))))
+
+(defun ensime-inf-util-strip-string (string)
+  "Strip STRING whitespace and newlines from end and beginning."
+  (replace-regexp-in-string
+   (rx (or (: string-start (* (any whitespace ?\r ?\n)))
+           (: (* (any whitespace ?\r ?\n)) string-end)))
+   ""
+   string))
+
+(defun collect-process-output-into-buffer (proc output)
+  "I do stuff with PROC and OUTPUT."
+  ;; (when (get-buffer "mybuf")
+  ;;   (kill-buffer "mybuf"))
+  (let* (
+         (buffer (get-buffer-create "mybuf")))
+    (with-current-buffer buffer
+      (insert output))
+    (message "inserted output into buffer")
+    buffer))
+
+(defun ensime-inf-complete (arg)
+  "Get completions for TEXT with point at position CURSOR."
+  (interactive)
+  (let*
+      ((process (get-buffer-process ensime-inf-buffer-name))
+       ;; (str (thing-at-point 'line))
+       (column (- (current-column) 7))
+       (fullstr (format ensime-inf-get-completions-code-template arg column))
+       ;; (comint-preoutput-filter-functions '(collect-process-output-into-buffer))
+       (inhibit-quit t))
+    (with-current-buffer (process-buffer process)
+      (set-process-filter process 'collect-process-output-into-buffer)
+      (message "completing: %s" fullstr)
+      (ensime-inf-send-string fullstr)
+      (accept-process-output process)
+      (set-process-filter process nil)
+      (message "sent string")
+      (setq result  (ailbe/buffer-string* (get-buffer "mybuf")))
+      (kill-buffer "mybuf")
+      (string-match ensime-inf-capture-candidates-regex result)
+      (setq res (substring result (match-beginning 1) (match-end 1)))
+      (mapcar 's-trim (split-string res ",")))))
+
+(defun company-ensime-inf-backend (command &optional arg &rest ignored)
+  "Company backend for ensime-inf mode."
+  (interactive (list 'interactive))
+
+  (cl-case command
+    (interactive (company-begin-backend 'company-ensime-inf-backend))
+    (prefix (and (eq major-mode 'ensime-inf-mode)
+                 (substring (thing-at-point 'line t) 7)))
+    (candidates
+     (mapcar (lambda (cand) (format "%s%s" arg cand)) (ensime-inf-complete arg)))))
+
+(add-to-list 'company-backends 'company-ensime-inf-backend)
+
 
 (provide 'ensime-inf)
 
